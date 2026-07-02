@@ -42,7 +42,15 @@
 #endif
 
 #include <limits.h>
+#if defined(__cplusplus)
+/* Use C++ atomics in C++ translation units to avoid toolchain/header mode
+ * mismatches around C11 _Atomic (seen with GCC13 cross builds in Yocto). */
+#include <atomic>
+#define PAS_ATOMIC(T) std::atomic<T>
+#else
 #include <stdatomic.h>
+#define PAS_ATOMIC(T) _Atomic(T)
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
