@@ -135,6 +135,10 @@ bool GStreamerHolePunchQuirkDreambox::setHolePunchVideoRectangle(GstElement*, co
     bottom = std::clamp(bottom, top, 576);
 
     GST_DEBUG("Dreambox video plane: view rect %d,%d %dx%d -> dst %d,%d %dx%d", rect.x(), rect.y(), rect.width(), rect.height(), left, top, right - left, bottom - top);
+    if (getenv("WPE_DREAM_VIDEO_DRYRUN")) { // tests: say where the plane would go, without touching it (the live service may be using it)
+        fprintf(stderr, "Dreambox video plane (dry run): view rect %d,%d %dx%d -> dst %d,%d %dx%d\n", rect.x(), rect.y(), rect.width(), rect.height(), left, top, right - left, bottom - top);
+        return true;
+    }
     writeVideoProc("left", left);
     writeVideoProc("top", top);
     writeVideoProc("width", right - left);
