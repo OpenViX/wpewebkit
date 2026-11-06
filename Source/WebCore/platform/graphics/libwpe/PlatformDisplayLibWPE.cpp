@@ -30,6 +30,10 @@
 
 #include "GLContext.h"
 
+#if PLATFORM(WPE)
+#include "NexusEGLPlatformQuirk.h"
+#endif
+
 #if USE(LIBEPOXY)
 // FIXME: For now default to the GBM EGL platform, but this should really be
 // somehow deducible from the build configuration.
@@ -55,6 +59,17 @@ namespace WebCore {
 
 std::unique_ptr<PlatformDisplayLibWPE> PlatformDisplayLibWPE::create(int hostFd)
 {
+#if PLATFORM(WPE)
+    // This is the code path actually used whenever a WPE Platform API renderer backend is in play (e.g. this fork's own
+    // wpe_fb embedder) - see WebProcess::platformInitializeWebProcess(), which constructs a PlatformDisplayLibWPE directly
+    // and does NOT go through PlatformDisplayDefault/initializePlatformDisplayIfNeeded() at all in that case. On a
+    // Nexus-based Broadcom box this must run before wpe_renderer_backend_egl_create()/eglGetDisplay() below, or
+    // eglInitialize() aborts with "Memory interface not registered" - confirmed on a real GigaBlue box 2026-09-23 (the
+    // standalone vu_egl_probe.c test that first verified this fix does not go through libwpe at all, so it never caught
+    // that PlatformDisplayDefault - the only place the fix was originally added - isn't actually reachable here).
+    ensureNexusPlatformJoined();
+#endif
+
     auto* backend = wpe_renderer_backend_egl_create(hostFd);
     if (!backend)
         return nullptr;
@@ -112,6 +127,9 @@ PlatformDisplayLibWPE::~PlatformDisplayLibWPE()
 {
     if (m_backend)
         wpe_renderer_backend_egl_destroy(m_backend);
+#if PLATFORM(WPE)
+    unregisterNexusPlatformIfJoined();
+#endif
 }
 
 } // namespace WebCore

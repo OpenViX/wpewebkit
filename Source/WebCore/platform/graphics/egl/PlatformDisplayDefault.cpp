@@ -31,10 +31,18 @@
 #include "GLContext.h"
 #include <epoxy/egl.h>
 
+#if PLATFORM(WPE)
+#include "NexusEGLPlatformQuirk.h"
+#endif
+
 namespace WebCore {
 
 std::unique_ptr<PlatformDisplayDefault> PlatformDisplayDefault::create()
 {
+#if PLATFORM(WPE)
+    ensureNexusPlatformJoined();
+#endif
+
     auto glDisplay = GLDisplay::create(eglGetDisplay(EGL_DEFAULT_DISPLAY));
     if (!glDisplay) {
         WTFLogAlways("Could not create default EGL display: %s. Aborting...", GLContext::lastErrorString());
@@ -53,7 +61,12 @@ PlatformDisplayDefault::PlatformDisplayDefault(Ref<GLDisplay>&& glDisplay)
 #endif
 }
 
-PlatformDisplayDefault::~PlatformDisplayDefault() = default;
+PlatformDisplayDefault::~PlatformDisplayDefault()
+{
+#if PLATFORM(WPE)
+    unregisterNexusPlatformIfJoined();
+#endif
+}
 
 } // namespace WebCore
 
