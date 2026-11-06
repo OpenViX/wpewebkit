@@ -18,6 +18,9 @@ public:
     bool isPlatformSupported() const final;
 
     GstElement* createAudioSink() final;
+    bool seekCompletesWithoutAsyncDone() const final { return true; }
+    GstSeekFlags adjustSeekFlags(GstSeekFlags) const final;
+    std::optional<GstClockTime> decoderPositionFromSinks(GstElement*, GstElement*, GstClockTime maxPosition) const final;
     std::optional<bool> isHardwareAccelerated(GstElementFactory*) final;
     unsigned getAdditionalPlaybinFlags() const final { return getGstPlayFlag("native-video") | getGstPlayFlag("native-audio"); }
 };

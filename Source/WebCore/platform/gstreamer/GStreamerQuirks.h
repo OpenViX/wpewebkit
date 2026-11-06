@@ -111,6 +111,15 @@ public:
 
     virtual std::optional<GstState> eosMediaPlayerState() const { return { }; }
 
+    // Position of the platform's decoder(s), for sinks that do not answer position queries with what is on screen.
+    // maxPosition: the position cannot be beyond this (the stream's duration plus some slack); values above are garbage.
+    virtual std::optional<GstClockTime> decoderPositionFromSinks(GstElement*, GstElement*, GstClockTime maxPosition) const { UNUSED_PARAM(maxPosition); return std::nullopt; }
+
+    // Sinks that never post GST_MESSAGE_ASYNC_DONE after a flushing seek, which is what WebKit waits for to complete it.
+    virtual bool seekCompletesWithoutAsyncDone() const { return false; }
+    // Platforms whose decoders cannot cope with some seek flags (e.g. hardware decoders and GST_SEEK_FLAG_ACCURATE).
+    virtual GstSeekFlags adjustSeekFlags(GstSeekFlags flags) const { return flags; }
+
 };
 
 class GStreamerHolePunchQuirk : public GStreamerQuirkBase {
@@ -149,6 +158,10 @@ public:
     bool isVideoCapsGLCompatible(const GRefPtr<GstCaps>&) const;
 
     GstState eosMediaPlayerState() const;
+
+    std::optional<GstClockTime> decoderPositionFromSinks(GstElement* audioSink, GstElement* videoSink, GstClockTime maxPosition) const;
+    bool seekCompletesWithoutAsyncDone() const;
+    GstSeekFlags adjustSeekFlags(GstSeekFlags) const;
 
     bool supportsVideoHolePunchRendering() const;
     GstElement* createHolePunchVideoSink(bool isLegacyPlaybin, const MediaPlayer*);

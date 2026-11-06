@@ -622,7 +622,19 @@ bool MediaPlayerPrivateGStreamer::doSeek(const SeekTarget& target, float rate, b
         m_isSegmentSeekAllowed = false;
         flag = GST_SEEK_FLAG_FLUSH;
     }
-    auto seekFlags = static_cast<GstSeekFlags>(flag | GST_SEEK_FLAG_ACCURATE);
+    auto seekFlags = GStreamerQuirksManager::singleton().adjustSeekFlags(static_cast<GstSeekFlags>(flag | GST_SEEK_FLAG_ACCURATE));
+
+    // With sinks that never post ASYNC_DONE, nothing tells us that the flush is over (and updateStates() does not run for a
+    // seek in PLAYING): once the seek event has been sent the seek is as complete as it will get, so complete it.
+    auto completeSeekWithoutAsyncDone = [this, time = target.time] {
+        if (!GStreamerQuirksManager::singleton().seekCompletesWithoutAsyncDone())
+            return;
+        RunLoop::mainSingleton().dispatchAfter(100_ms, [weakThis = ThreadSafeWeakPtr { *this }, time] {
+            RefPtr protectedThis = weakThis.get();
+            if (protectedThis && protectedThis->m_isSeeking && !protectedThis->m_isSeekPending && protectedThis->m_seekTarget.time == time)
+                protectedThis->finishSeek();
+        });
+    };
 
     // Seeking towards the end is not well supported in oggdemux, sometimes it receives EOS
     // while trying to retrieve a chain and thus disables seeking in push mode.
@@ -678,10 +690,13 @@ bool MediaPlayerPrivateGStreamer::doSeek(const SeekTarget& target, float rate, b
             gst_element_send_event(pipeline, gst_event_new_seek(rate, format, flags, startType, start, stopType, stop));
         }), data, reinterpret_cast<GDestroyNotify>(destroyAsyncSeekData));
 
+        completeSeekWithoutAsyncDone();
         return true;
     }
 
     auto result = gst_element_send_event(m_pipeline.get(), event.leakRef());
+    if (result)
+        completeSeekWithoutAsyncDone();
     if (isSegment || !isSeamlessSeekingEnabled() || !result)
         return result;
 
@@ -1686,6 +1701,13 @@ bool MediaPlayerPrivateGStreamer::isMediaStreamPlayer() const
 
 GstClockTime MediaPlayerPrivateGStreamer::gstreamerPositionFromSinks() const
 {
+    // Only with a known duration: the decoder time is garbage before the first frame and the duration is what bounds it.
+    gint64 durationForBound = GST_CLOCK_TIME_NONE;
+    if (m_pipeline && gst_element_query_duration(m_pipeline.get(), GST_FORMAT_TIME, &durationForBound) && GST_CLOCK_TIME_IS_VALID(durationForBound)) {
+        if (auto decoderPosition = GStreamerQuirksManager::singleton().decoderPositionFromSinks(m_audioSink.get(), m_videoSink.get(), static_cast<GstClockTime>(durationForBound) + 5 * GST_SECOND))
+            return *decoderPosition;
+    }
+
     gint64 gstreamerPosition = GST_CLOCK_TIME_NONE;
     // Asking directly to the sinks and choosing the highest value is faster than asking to the pipeline.
     GST_TRACE_OBJECT(pipeline(), "Querying position to audio sink (if any).");

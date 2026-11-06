@@ -416,6 +416,31 @@ void GStreamerQuirksManager::processWebAudioSilentBuffer(GstBuffer* buffer) cons
     }
 }
 
+bool GStreamerQuirksManager::seekCompletesWithoutAsyncDone() const
+{
+    for (const auto& quirk : m_quirks) {
+        if (quirk->seekCompletesWithoutAsyncDone())
+            return true;
+    }
+    return false;
+}
+
+GstSeekFlags GStreamerQuirksManager::adjustSeekFlags(GstSeekFlags flags) const
+{
+    for (const auto& quirk : m_quirks)
+        flags = quirk->adjustSeekFlags(flags);
+    return flags;
+}
+
+std::optional<GstClockTime> GStreamerQuirksManager::decoderPositionFromSinks(GstElement* audioSink, GstElement* videoSink, GstClockTime maxPosition) const
+{
+    for (const auto& quirk : m_quirks) {
+        if (auto position = quirk->decoderPositionFromSinks(audioSink, videoSink, maxPosition))
+            return position;
+    }
+    return std::nullopt;
+}
+
 bool GStreamerQuirksManager::needsCustomInstantRateChange() const
 {
     for (auto& quirk : m_quirks) {
