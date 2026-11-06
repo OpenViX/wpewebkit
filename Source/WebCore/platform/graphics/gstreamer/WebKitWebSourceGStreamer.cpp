@@ -1078,6 +1078,18 @@ void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, con
     members->pendingHttpHeadersMessage = adoptGRef(gst_message_new_element(GST_OBJECT_CAST(src.get()), gst_structure_copy(httpHeaders.get())));
     members->pendingHttpHeadersEvent = adoptGRef(gst_event_new_custom(GST_EVENT_CUSTOM_DOWNSTREAM_STICKY, httpHeaders.release()));
 
+    // A range that starts at the end of the file (or behind it) cannot be satisfied, and a server says so with 416. That is the end of the stream, not
+    // an error: an MP4 demuxer that has read the last box asks for the one that would follow it, at exactly the size of the file (a file with a small
+    // trailing 'free' box after a 5 GB 'mdat' did that) and the whole playback failed with "Received 416 HTTP error code".
+    if (response.httpStatusCode() == httpStatus416RangeNotSatisfiable && members->requestedPosition && members->size && members->requestedPosition >= *members->size) {
+        GST_DEBUG_OBJECT(src.get(), "R%u: 416 for a range that starts at the end of the file (%" G_GUINT64_FORMAT " >= %" G_GUINT64_FORMAT "): end of stream",
+            m_requestNumber, members->requestedPosition, *members->size);
+        members->doesHaveEOS = true;
+        members->responseCondition.notifyOne();
+        completionHandler(ShouldContinuePolicyCheck::No);
+        return;
+    }
+
     if (response.httpStatusCode() >= httpStatus400BadRequest) {
         GST_ELEMENT_ERROR(src.get(), RESOURCE, READ, ("R%u: Received %d HTTP error code", m_requestNumber, response.httpStatusCode()), (nullptr));
         members->doesHaveEOS = true;
