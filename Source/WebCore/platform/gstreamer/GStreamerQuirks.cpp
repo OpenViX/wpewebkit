@@ -25,12 +25,14 @@
 
 #include "GStreamerCommon.h"
 #include "GStreamerHolePunchQuirkBcmNexus.h"
+#include "GStreamerHolePunchQuirkDreambox.h"
 #include "GStreamerHolePunchQuirkFake.h"
 #include "GStreamerHolePunchQuirkRialto.h"
 #include "GStreamerHolePunchQuirkWesteros.h"
 #include "GStreamerQuirkAmLogic.h"
 #include "GStreamerQuirkBcmNexus.h"
 #include "GStreamerQuirkBroadcom.h"
+#include "GStreamerQuirkDreambox.h"
 #include "GStreamerQuirkOpenMAX.h"
 #include "GStreamerQuirkQualcomm.h"
 #include "GStreamerQuirkRealtek.h"
@@ -88,7 +90,7 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
     GST_DEBUG("Attempting to parse requested quirks: %s", GST_STR_NULL(quirksString.utf8()));
     if (quirksString) {
         if (WTF::equalLettersIgnoringASCIICase(quirksString.span(), "help"_s)) {
-            gst_printerrln("Supported quirks for WEBKIT_GST_QUIRKS are: amlogic, broadcom, bcmnexus, openmax, qualcomm, realtek, rialto, westeros");
+            gst_printerrln("Supported quirks for WEBKIT_GST_QUIRKS are: amlogic, broadcom, bcmnexus, dreambox, openmax, qualcomm, realtek, rialto, westeros");
             return;
         }
 
@@ -100,6 +102,8 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
                 quirk = WTF::makeUnique<GStreamerQuirkBroadcom>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "bcmnexus"_s))
                 quirk = WTF::makeUnique<GStreamerQuirkBcmNexus>();
+            else if (WTF::equalLettersIgnoringASCIICase(identifier, "dreambox"_s))
+                quirk = WTF::makeUnique<GStreamerQuirkDreambox>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "openmax"_s))
                 quirk = WTF::makeUnique<GStreamerQuirkOpenMAX>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "qualcomm"_s))
@@ -150,13 +154,15 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
         return;
 
     if (WTF::equalLettersIgnoringASCIICase(identifierString.span(), "help"_s)) {
-        gst_printerrln("Supported quirks for WEBKIT_GST_HOLE_PUNCH_QUIRK are: fake, bcmnexus, rialto, westeros");
+        gst_printerrln("Supported quirks for WEBKIT_GST_HOLE_PUNCH_QUIRK are: fake, bcmnexus, dreambox, rialto, westeros");
         return;
     }
 
     // TODO: Maybe check this is coherent (somehow) with the quirk(s) selected above.
     if (WTF::equalLettersIgnoringASCIICase(identifierString.span(), "bcmnexus"_s))
         m_holePunchQuirk = WTF::makeUnique<GStreamerHolePunchQuirkBcmNexus>();
+    else if (WTF::equalLettersIgnoringASCIICase(identifierString.span(), "dreambox"_s))
+        m_holePunchQuirk = WTF::makeUnique<GStreamerHolePunchQuirkDreambox>();
     else if (WTF::equalLettersIgnoringASCIICase(identifierString.span(), "rialto"_s))
         m_holePunchQuirk = WTF::makeUnique<GStreamerHolePunchQuirkRialto>();
     else if (WTF::equalLettersIgnoringASCIICase(identifierString.span(), "westeros"_s))

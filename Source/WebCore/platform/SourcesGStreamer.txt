@@ -104,6 +104,7 @@ platform/gstreamer/GStreamerCodecUtilities.cpp
 platform/gstreamer/GStreamerElementHarness.cpp
 platform/gstreamer/GStreamerHolePunchQuirkBcmNexus.cpp
 platform/gstreamer/GStreamerHolePunchQuirkRialto.cpp
+platform/gstreamer/GStreamerHolePunchQuirkDreambox.cpp
 platform/gstreamer/GStreamerHolePunchQuirkWesteros.cpp
 platform/gstreamer/GStreamerQuirkAmLogic.cpp
 platform/gstreamer/GStreamerQuirkBcmNexus.cpp
@@ -113,6 +114,7 @@ platform/gstreamer/GStreamerQuirkOpenMAX.cpp
 platform/gstreamer/GStreamerQuirkQualcomm.cpp
 platform/gstreamer/GStreamerQuirkRealtek.cpp
 platform/gstreamer/GStreamerQuirkRialto.cpp
+platform/gstreamer/GStreamerQuirkDreambox.cpp
 platform/gstreamer/GStreamerQuirkWesteros.cpp
 platform/gstreamer/GStreamerQuirks.cpp
 platform/gstreamer/PlatformSpeechSynthesizerGStreamer.cpp
