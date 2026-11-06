@@ -29,10 +29,24 @@
 #include "GLContext.h"
 #include <epoxy/egl.h>
 
+#if PLATFORM(WPE)
+#include "NexusEGLPlatformQuirk.h"
+#endif
+
 namespace WebCore {
 
 std::unique_ptr<PlatformDisplaySurfaceless> PlatformDisplaySurfaceless::create()
 {
+#if PLATFORM(WPE)
+    // This is the FIRST EGL call of a WebProcess that gets its display through WebProcess::initializePlatformDisplayIfNeeded()
+    // (m_rendererBufferTransportMode not empty), and eglQueryString(EGL_NO_DISPLAY, ...) below is rejected with EGL_BAD_DISPLAY. On a
+    // Nexus based Broadcom box (VU+ Ultimo 4K confirmed) the vendor libEGL keeps its per-thread state under a pthread key that only the
+    // Nexus join/register creates: before it, the key is still 0 and pthread_getspecific(0) returns mimalloc's slot (theap_main), so the
+    // driver stores 0x3008 into the first word of mimalloc's main heap. The next big allocation (JSC::VM::create) then dies in
+    // mi_arenas_page_regular_alloc. Join and register first, as PlatformDisplayLibWPE/Default already do.
+    ensureNexusPlatformJoined();
+#endif
+
     const char* extensions = eglQueryString(nullptr, EGL_EXTENSIONS);
     if (!GLContext::isExtensionSupported(extensions, "EGL_MESA_platform_surfaceless"))
         return nullptr;
@@ -60,6 +74,11 @@ PlatformDisplaySurfaceless::PlatformDisplaySurfaceless(Ref<GLDisplay>&& glDispla
 #endif
 }
 
-PlatformDisplaySurfaceless::~PlatformDisplaySurfaceless() = default;
+PlatformDisplaySurfaceless::~PlatformDisplaySurfaceless()
+{
+#if PLATFORM(WPE)
+    unregisterNexusPlatformIfJoined();
+#endif
+}
 
 } // namespace WebCore
