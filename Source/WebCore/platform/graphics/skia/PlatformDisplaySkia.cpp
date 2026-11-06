@@ -41,14 +41,17 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
 
 #if USE(LIBEPOXY)
 #include <epoxy/egl.h>
+#include <epoxy/gl.h>
 #include <skia/gpu/ganesh/gl/epoxy/GrGLMakeEpoxyEGLInterface.h>
 #else
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <GLES2/gl2.h>
 #include <skia/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.h>
 #endif
 WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
 
+#include <cstdio>
 #include <wtf/MemoryPressureHandler.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RAMSize.h>
@@ -91,6 +94,19 @@ static sk_sp<const GrGLInterface> skiaGLInterface()
     };
 
     return grGLInterface.get();
+}
+
+// Skia refuses to make a GPU context on some drivers (a missing function or extension, an unsupported version, no memory): say why, with what the driver
+// reports, instead of leaving it to whoever finds the context null later.
+static void logSkiaGLContextFailure(const sk_sp<const GrGLInterface>& glInterface)
+{
+    auto text = [](GLenum name) {
+        auto* value = reinterpret_cast<const char*>(glGetString(name));
+        return value ? value : "(null)";
+    };
+    GLenum error = glGetError();
+    fprintf(stderr, "Skia: GrDirectContexts::MakeGL failed (GL interface %s, glGetError 0x%x)\n  GL_VENDOR     %s\n  GL_RENDERER   %s\n  GL_VERSION    %s\n  GL_SHADING    %s\n  GL_EXTENSIONS %s\n",
+        glInterface ? "created" : "NOT created", static_cast<unsigned>(error), text(GL_VENDOR), text(GL_RENDERER), text(GL_VERSION), text(GL_SHADING_LANGUAGE_VERSION), text(GL_EXTENSIONS));
 }
 
 static thread_local RefPtr<SkiaGLContext> s_skiaGLContext;
@@ -359,7 +375,8 @@ private:
             m_skiaGrContext = WTF::move(grContext);
             m_sampleCount = initializeMSAASampleCount(m_skiaGrContext.get());
             m_maxResourceCacheBytes = initializeMaxResourceCacheBytes(m_skiaGrContext.get());
-        }
+        } else
+            logSkiaGLContextFailure(skiaGLInterface());
     }
 
     std::unique_ptr<GLContext> m_skiaGLContext WTF_GUARDED_BY_LOCK(m_lock);

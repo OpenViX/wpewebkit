@@ -125,7 +125,14 @@ ThreadedCompositor::ThreadedCompositor(WebPage& webPage, LayerTreeHost& layerTre
 
         if (m_useSkia) {
             PlatformDisplay::sharedDisplay().setSkiaGLContextForCurrentThread(WTF::move(context));
-            m_threadSafeGrContext = PlatformDisplay::sharedDisplay().skiaGrContext()->threadSafeProxy();
+            // Skia may refuse to make a GPU context on this driver (see logSkiaGLContextFailure): there is nothing to composite with then.
+            auto* grContext = PlatformDisplay::sharedDisplay().skiaGrContext();
+            if (!grContext) {
+                Locker locker { m_state.lock };
+                m_state.state = State::Invalidated;
+                return;
+            }
+            m_threadSafeGrContext = grContext->threadSafeProxy();
         } else {
             m_context = WTF::move(context);
             m_textureMapper = TextureMapper::create();
