@@ -248,6 +248,18 @@ static std::optional<size_t> glyphCacheTextureMaximumBytes()
 
 static size_t initializeMaxResourceCacheBytes(GrDirectContext* grContext)
 {
+    // WEBKIT_SKIA_RESOURCE_CACHE_MB: Skia keeps this much GPU memory for its cache. The default is chosen from the system RAM (48/80/256 MB),
+    // which says nothing about a small GPU heap shared with other processes.
+    if (const char* env = getenv("WEBKIT_SKIA_RESOURCE_CACHE_MB"); env && *env) {
+        char* end = nullptr;
+        unsigned long megabytes = strtoul(env, &end, 10);
+        if (end != env && megabytes > 0 && megabytes <= 1024) {
+            grContext->setResourceCacheLimit(megabytes * MB);
+            WTFLogAlways("WEBKIT_SKIA_RESOURCE_CACHE_MB=%lu", megabytes);
+            return grContext->getResourceCacheLimit();
+        }
+        WTFLogAlways("Invalid value '%s' for WEBKIT_SKIA_RESOURCE_CACHE_MB (1..1024), ignoring", env);
+    }
     size_t memorySize = WTF::ramSize();
     if (memorySize < s_lowEndDeviceMemoryThresholdBytes)
         grContext->setResourceCacheLimit(s_lowEndMaxResourceCacheBytes);

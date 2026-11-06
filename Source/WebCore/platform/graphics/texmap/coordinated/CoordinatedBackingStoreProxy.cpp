@@ -237,9 +237,31 @@ void CoordinatedBackingStoreProxy::invalidateRegion(const Vector<IntRect, 1>& di
     }
 }
 
+// WEBKIT_COVER_AREA_MULTIPLIER=1..4 (default 2): how far beyond the visible rect tiles are created and kept. The cover rect is inflated by
+// (multiplier - 1) / 2 on every side, so 2 means a cover rect of four times the visible area, for every layer with a backing store. The
+// MemoryPressureHandler only looks at system RAM; on a set-top box whose GPU heap is small and shared (Broadcom Nexus) that heap is exhausted
+// long before it reacts, tile textures fail to allocate and come out as black rectangles. 1 keeps only the visible area.
+static float defaultCoverAreaMultiplier()
+{
+    static const float multiplier = [] {
+        float value = 2.0f;
+        if (const char* env = getenv("WEBKIT_COVER_AREA_MULTIPLIER"); env && *env) {
+            char* end = nullptr;
+            float parsed = strtof(env, &end);
+            if (end != env && parsed >= 1.0f && parsed <= 4.0f) {
+                value = parsed;
+                WTFLogAlways("WEBKIT_COVER_AREA_MULTIPLIER=%g", value);
+            } else
+                WTFLogAlways("Invalid value '%s' for WEBKIT_COVER_AREA_MULTIPLIER (1..4), ignoring", env);
+        }
+        return value;
+    }();
+    return multiplier;
+}
+
 void CoordinatedBackingStoreProxy::createOrDestroyTiles(const IntRect& unscaledVisibleRect, const IntRect& unscaledContentsRect, const IntSize& unscaledViewportSize, float contentsScale, int maxTextureSize, Damage& damage, Vector<uint32_t>& tilesToCreate, Vector<uint32_t>& tilesToRemove)
 {
-    float coverAreaMultiplier = MemoryPressureHandler::singleton().isUnderMemoryPressure() ? 1.0f : 2.0f;
+    float coverAreaMultiplier = MemoryPressureHandler::singleton().isUnderMemoryPressure() ? 1.0f : defaultCoverAreaMultiplier();
     bool contentsScaleChanged = m_contentsScale != contentsScale;
     m_contentsScale = contentsScale;
 

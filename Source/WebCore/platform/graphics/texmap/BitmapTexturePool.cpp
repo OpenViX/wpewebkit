@@ -42,10 +42,30 @@ namespace WebCore {
 WTF_MAKE_TZONE_ALLOCATED_IMPL(BitmapTexturePool);
 
 #if defined(BITMAP_TEXTURE_POOL_MAX_SIZE_IN_MB) && BITMAP_TEXTURE_POOL_MAX_SIZE_IN_MB > 0
-static constexpr size_t s_poolSizeLimitInBytes = BITMAP_TEXTURE_POOL_MAX_SIZE_IN_MB * MB;
+static constexpr size_t s_defaultPoolSizeLimitInBytes = BITMAP_TEXTURE_POOL_MAX_SIZE_IN_MB * MB;
 #else
-static constexpr size_t s_poolSizeLimitInBytes = std::numeric_limits<size_t>::max();
+static constexpr size_t s_defaultPoolSizeLimitInBytes = std::numeric_limits<size_t>::max();
 #endif
+
+// WEBKIT_TEXTURE_POOL_MAX_MB (runtime form of BITMAP_TEXTURE_POOL_MAX_SIZE_IN_MB): above this size the pool releases unused textures after 50 ms
+// instead of 3 s. In-use textures are not affected (see WEBKIT_COVER_AREA_MULTIPLIER for those).
+static size_t poolSizeLimitInBytes()
+{
+    static const size_t limit = [] {
+        size_t value = s_defaultPoolSizeLimitInBytes;
+        if (const char* env = getenv("WEBKIT_TEXTURE_POOL_MAX_MB"); env && *env) {
+            char* end = nullptr;
+            unsigned long megabytes = strtoul(env, &end, 10);
+            if (end != env && megabytes > 0 && megabytes <= 4096) {
+                value = megabytes * MB;
+                WTFLogAlways("WEBKIT_TEXTURE_POOL_MAX_MB=%lu", megabytes);
+            } else
+                WTFLogAlways("Invalid value '%s' for WEBKIT_TEXTURE_POOL_MAX_MB (1..4096), ignoring", env);
+        }
+        return value;
+    }();
+    return limit;
+}
 
 static constexpr Seconds s_releaseUnusedSecondsTolerance { 3_s };
 static constexpr Seconds s_releaseUnusedTexturesTimerInterval { 500_ms };
@@ -188,7 +208,7 @@ void BitmapTexturePool::enterLimitExceededModeIfNeeded()
     if (m_onLimitExceededMode)
         return;
 
-    if (m_poolSizeInBytes > s_poolSizeLimitInBytes) {
+    if (m_poolSizeInBytes > poolSizeLimitInBytes()) {
         // If we allocated a new texture and this caused that we went over the size limit, enter limit exceeded mode,
         // set values for tolerance and interval for this mode, and trigger an immediate request to release textures.
         // While on limit exceeded mode, we are more aggressive releasing textures, by polling more often and keeping
@@ -208,7 +228,7 @@ void BitmapTexturePool::exitLimitExceededModeIfNeeded()
 
     // If we're in limit exceeded mode and the pool size has become smaller than the limit,
     // exit the limit exceeded mode and set the default values for interval and tolerance again.
-    if (m_poolSizeInBytes <= s_poolSizeLimitInBytes) {
+    if (m_poolSizeInBytes <= poolSizeLimitInBytes()) {
         m_onLimitExceededMode = false;
         m_releaseUnusedSecondsTolerance = s_releaseUnusedSecondsTolerance;
         m_releaseUnusedTexturesTimerInterval = s_releaseUnusedTexturesTimerInterval;
