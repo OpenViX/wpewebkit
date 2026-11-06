@@ -606,6 +606,11 @@ AcceleratedSurface::SwapChain::SwapChain(AcceleratedSurface& surface)
         else
             m_type = Type::SharedMemory;
         break;
+#if PLATFORM(WPE) && !OS(ANDROID)
+    case PlatformDisplay::Type::Default:
+        m_type = Type::SharedMemory;
+        break;
+#endif
 #if USE(GBM)
     case PlatformDisplay::Type::GBM:
         if (display.eglExtensions().EXT_image_dma_buf_import) {

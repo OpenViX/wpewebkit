@@ -81,7 +81,7 @@ public:
 #if OS(ANDROID)
         Android,
 #endif
-#if PLATFORM(GTK) || OS(ANDROID)
+#if PLATFORM(GTK) || PLATFORM(WPE) || OS(ANDROID)
         Default,
 #endif
     };

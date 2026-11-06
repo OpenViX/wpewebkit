@@ -282,6 +282,10 @@ static GLContext::Target targetForPlatformDisplay(PlatformDisplay& platformDispl
     switch (platformDisplay.type()) {
     case PlatformDisplay::Type::Surfaceless:
         return GLContext::Target::Surfaceless;
+#if PLATFORM(WPE) && !OS(ANDROID)
+    case PlatformDisplay::Type::Default:
+        return GLContext::Target::Surfaceless;
+#endif
 #if USE(WPE_RENDERER)
     case PlatformDisplay::Type::WPE:
         return GLContext::Target::WPE;
