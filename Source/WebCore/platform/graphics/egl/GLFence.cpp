@@ -33,9 +33,24 @@
 #include <GLES2/gl2.h>
 #endif
 
+#include <cstdlib>
+#include <cstring>
+
 namespace WebCore {
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(GLFence);
+
+// Some vendor EGL/GLES drivers advertise EGL 1.5 but crash in glFlush() once an EGL fence sync has been
+// created (seen on Broadcom V3D set-top box drivers). Allow opting out; callers already fall back to a
+// synchronous CPU wait (GrSyncCpu::kYes / glFinish) when fences are unsupported.
+static bool fencesDisabledByEnvironment()
+{
+    static const bool disabled = [] {
+        const char* value = getenv("WEBKIT_DISABLE_GL_FENCE");
+        return value && *value && strcmp(value, "0");
+    }();
+    return disabled;
+}
 
 static inline bool eglVersionSupportsFences(const GLDisplay& display)
 {
@@ -54,6 +69,9 @@ static inline bool glContextSupportsFences(GLContextWrapper* context)
 
 bool GLFence::isSupported(const GLDisplay& display)
 {
+    if (fencesDisabledByEnvironment())
+        return false;
+
     auto* context = GLContextWrapper::currentContext();
     if (!context)
         return false;
@@ -67,6 +85,9 @@ bool GLFence::isSupported(const GLDisplay& display)
 std::unique_ptr<GLFence> GLFence::create(const GLDisplay& display)
 {
 #if HAVE(GL_FENCE)
+    if (fencesDisabledByEnvironment())
+        return nullptr;
+
     auto* context = GLContextWrapper::currentContext();
     if (!context)
         return nullptr;
