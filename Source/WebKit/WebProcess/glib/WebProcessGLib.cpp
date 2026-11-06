@@ -70,7 +70,7 @@
 #include <WebCore/PlatformDisplayAndroid.h>
 #endif
 
-#if PLATFORM(GTK) || OS(ANDROID)
+#if PLATFORM(GTK) || PLATFORM(WPE) || OS(ANDROID)
 #include <WebCore/PlatformDisplayDefault.h>
 #endif
 
@@ -174,7 +174,7 @@ void WebProcess::initializePlatformDisplayIfNeeded() const
         return;
     }
 
-#if PLATFORM(GTK) || OS(ANDROID)
+#if PLATFORM(GTK) || PLATFORM(WPE) || OS(ANDROID)
     if (auto display = PlatformDisplayDefault::create()) {
         PlatformDisplay::setSharedDisplay(WTF::move(display));
         return;
