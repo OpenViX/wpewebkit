@@ -227,6 +227,7 @@ HashSet<String, ASCIICaseInsensitiveHash>& MIMETypeRegistry::supportedNonImageMI
             "text/"_s,
             "application/xml"_s,
             "application/xhtml+xml"_s,
+            "application/vnd.hbbtv.xhtml+xml"_s, // HbbTV applications (ETSI TS 102 796), an XHTML document
 #if !PLATFORM(IOS_FAMILY)
             "application/vnd.wap.xhtml+xml"_s,
             "application/rss+xml"_s,
