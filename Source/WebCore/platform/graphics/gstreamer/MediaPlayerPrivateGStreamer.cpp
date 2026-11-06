@@ -2823,14 +2823,23 @@ void MediaPlayerPrivateGStreamer::configureElement(GstElement* element)
         configureUriDecodebin2(element);
 
     // In case of playbin3 with <video ... preload="auto">, instantiate downloadbuffer element,
-    // otherwise the playbin3 would instantiate a queue element instead. When playing blob URIs,
-    // configure urisourcebin to setup a ring buffer so that downstream demuxers operate in pull
-    // mode. Some demuxers (matroskademux) don't work as well in push mode.
+    // otherwise the playbin3 would instantiate a queue element instead. Configure urisourcebin to
+    // set up a (bounded) ring buffer so that downstream demuxers operate in pull mode. Some
+    // demuxers (matroskademux) don't work as well in push mode.
+    //
+    // This used to request unbounded "download" mode (keep the entire resource on disk forever)
+    // for any non-MediaSource/non-MediaStream progressive URL, blob or not. For a large (multi-GiB)
+    // progressive download that starves qtdemux's own small, pull-mode probe reads (e.g. its
+    // confirm-end-of-file check right after parsing a fast-start moov) against downloadbuffer's own
+    // eager, unbounded sequential prefetch of the whole file: both share the same underlying HTTP
+    // source element and its mutex, and the probe can lose that race for tens of seconds real files,
+    // during which nothing plays and nothing errors. A bounded ring buffer (matching the same size
+    // already used for blob URIs) removes the "keep downloading forever, regardless of demand"
+    // behavior entirely, which removes the starvation, not just its symptom (seen 2026-09-23 with
+    // >=4GiB progressive MP4 playback silently never starting).
     if (startsWith(name.span(), "urisourcebin"_s) && !m_isLegacyPlaybin && m_preload == MediaPlayer::Preload::Auto) {
-        if (isBlob)
-            g_object_set(element, "ring-buffer-max-size", 2 * MB, nullptr);
-        else if (!isMediaSource() && !isMediaStreamPlayer())
-            g_object_set(element, "download", TRUE, nullptr);
+        if (!isMediaSource() && !isMediaStreamPlayer())
+            g_object_set(element, "ring-buffer-max-size", (isBlob ? 2 : 8) * MB, nullptr);
     }
 
     // Collect processing time metrics for video decoders and converters.
@@ -3519,7 +3528,17 @@ void MediaPlayerPrivateGStreamer::updateDownloadBufferingFlag()
     bool diskCacheDisabled = isMediaDiskCacheDisabled();
     GST_DEBUG_OBJECT(pipeline(), "Media on-disk cache is %s", (diskCacheDisabled) ? "disabled" : "enabled");
 
-    bool shouldDownload = !m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto && !diskCacheDisabled;
+    // GST_PLAY_FLAG_DOWNLOAD drives urisourcebin into unbounded "download" mode: the whole
+    // resource is kept on disk forever, downloaded eagerly and sequentially regardless of what
+    // the demuxer actually needs next. For a large (multi-GiB) progressive file this starves the
+    // demuxer's own small, pull-mode probe reads (e.g. qtdemux's confirm-end-of-file check right
+    // after parsing a fast-start moov) against that eager prefetch: both share the same underlying
+    // HTTP source element and its mutex, and the probe can lose that race for tens of seconds on a
+    // real file, during which nothing plays and nothing errors (seen 2026-09-23, >=4GiB progressive
+    // MP4). configureElement() already requests a bounded ring buffer on urisourcebin instead (same
+    // mechanism used for blob URIs) - never set this flag, so that bounded mode is what's actually
+    // used, not overridden by it.
+    bool shouldDownload = false;
     if (shouldDownload) {
         GST_INFO_OBJECT(pipeline(), "Enabling on-disk buffering");
         g_object_set(m_pipeline.get(), "flags", flags | flagDownload, nullptr);
