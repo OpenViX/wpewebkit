@@ -584,10 +584,8 @@ bool GrGLInterface::validate() const {
         }
     }
 
-    if ((GR_IS_GR_GL(fStandard) && (
-          fExtensions.has("GL_EXT_debug_marker"))) ||
-       (GR_IS_GR_GL_ES(fStandard) && (
-          fExtensions.has("GL_EXT_debug_marker")))) {
+    // (GL ES: not required. Skia's GL backend never calls the markers, and some ES drivers advertise GL_EXT_debug_marker without exporting the functions.)
+    if (GR_IS_GR_GL(fStandard) && fExtensions.has("GL_EXT_debug_marker")) {
         if (!fFunctions.fInsertEventMarker ||
             !fFunctions.fPopGroupMarker ||
             !fFunctions.fPushGroupMarker) {
