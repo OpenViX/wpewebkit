@@ -217,8 +217,12 @@ static Expected<SkImageInfo, String> getImageInfoFromBuffer(const  GRefPtr<WPEBu
     if (WPE_IS_BUFFER_DMA_BUF(buffer.get())) {
         auto* dmaBuffer = WPE_BUFFER_DMA_BUF(buffer.get());
         SkAlphaType alphaType = kPremul_SkAlphaType;
+#if USE(LIBDRM)
         if (wpe_buffer_dma_buf_get_format(dmaBuffer) == DRM_FORMAT_XRGB8888)
             alphaType = kOpaque_SkAlphaType;
+#else
+        UNUSED_PARAM(dmaBuffer);
+#endif
         return SkImageInfo::Make(width, height, kBGRA_8888_SkColorType, alphaType, SkColorSpace::MakeSRGB());
     }
 
