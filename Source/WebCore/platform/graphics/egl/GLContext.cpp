@@ -230,6 +230,14 @@ std::unique_ptr<GLContext> GLContext::createPbufferContext(GLDisplay& display, E
     return makeUnique<GLContext>(display, context, surface, config);
 }
 
+// Some vendor EGL implementations (Broadcom/Nexus V3D, e.g. VU+ Ultimo 4K) offer neither EGL_KHR_surfaceless_context nor
+// EGL_KHR_surfaceless_opengl: no context can be made current without a surface there.
+static bool eglSupportsSurfacelessContexts(GLDisplay& display)
+{
+    const char* extensions = eglQueryString(display.eglDisplay(), EGL_EXTENSIONS);
+    return GLContext::isExtensionSupported(extensions, "EGL_KHR_surfaceless_context") || GLContext::isExtensionSupported(extensions, "EGL_KHR_surfaceless_opengl");
+}
+
 std::unique_ptr<GLContext> GLContext::createOffscreenContext(GLDisplay& display, Target target, EGLContext sharingContext)
 {
     if (auto context = createSurfacelessContext(display, target, sharingContext))
@@ -246,9 +254,13 @@ std::unique_ptr<GLContext> GLContext::createOffscreenContext(GLDisplay& display,
     case Target::GBM:
 #endif
     case Target::Surfaceless:
-        // Do not fallback to pbuffers.
-        RELEASE_LOG_INFO(Compositing, "Could not create EGL surfaceless context: %s.", lastErrorString());
-        return nullptr;
+        // Do not fallback to pbuffers, unless the EGL implementation cannot do surfaceless contexts at all: then a
+        // pbuffer is the only way to get an offscreen context, and without one nothing can be rendered.
+        if (target != Target::Surfaceless || eglSupportsSurfacelessContexts(display)) {
+            RELEASE_LOG_INFO(Compositing, "Could not create EGL surfaceless context: %s.", lastErrorString());
+            return nullptr;
+        }
+        break;
     default:
         break;
     }

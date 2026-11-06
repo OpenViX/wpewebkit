@@ -164,7 +164,12 @@ void AcceleratedSurface::RenderTarget::createSkiaSurfaceForFramebuffer(unsigned 
     glGetIntegerv(GL_STENCIL_BITS, &stencilBits);
 
     auto& display = PlatformDisplay::sharedDisplay();
-    GLContext::ScopedGLContextCurrent scopedCurrent(*display.skiaGLContext());
+    auto* skiaGLContext = display.skiaGLContext();
+    if (!skiaGLContext) {
+        LOG_ERROR("AcceleratedSurface has no Skia GL context for the render target");
+        return;
+    }
+    GLContext::ScopedGLContextCurrent scopedCurrent(*skiaGLContext);
 
     GrGLFramebufferInfo framebufferInfo;
     framebufferInfo.fFBOID = fbo;
