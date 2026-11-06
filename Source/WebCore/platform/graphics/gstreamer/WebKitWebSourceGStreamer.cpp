@@ -125,6 +125,14 @@ struct WebKitWebSrcPrivate {
         uint64_t stopPosition { UINT64_MAX };
 
         bool isRequestPending { true };
+        // Set by webKitWebSrcDoSeek() when a seek to at-or-past-EOF (see the 416-at-EOF handling in responseReceived,
+        // below) pre-empts a real, strictly-below-EOF seek that had not yet received any data. Some >=4GiB progressive
+        // MP4s (moov followed by a tiny trailing 'free' box) make the demuxer issue a spurious "confirm the exact end"
+        // seek that races the real content-resume seek and cancels it before a single byte arrives (seen 2026-09-23,
+        // >4GiB ZDF films; files just under 4GiB do not exhibit this). When set, the 416-at-EOF response must NOT be
+        // treated as a graceful stream end (unlike the genuine end-of-file case the special-case handling was written
+        // for) - the file legitimately still has unserved content.
+        bool hasDeferredRealPosition { false };
         HashSet<RefPtr<WebCore::SecurityOrigin>> origins;
 
         RefPtr<PlatformMediaResource> resource;
@@ -276,6 +284,7 @@ static void webkitWebSrcReset([[maybe_unused]] WebKitWebSrc* src, DataMutexLocke
     // Reset request state. Any previous request has been cancelled at this point.
     members->wasResponseReceived = false;
     members->doesHaveEOS = false;
+    members->hasDeferredRealPosition = false;
     members->downloadStartTime = WallTime::nan();
     members->totalDownloadedBytes = 0; // Resetted for each request, used to estimate download speed.
     members->pendingHttpHeadersMessage = nullptr;
@@ -774,8 +783,15 @@ static gboolean webKitWebSrcDoSeek(GstBaseSrc* baseSrc, GstSegment* segment)
         return FALSE;
     }
 
-    if (members->size && segment->start >= members->size)
+    if (members->size && segment->start >= members->size) {
         GST_WARNING_OBJECT(src, "Potentially seeking behind end of file, might EOS immediately");
+        // If a real, strictly-below-EOF position was requested but got zero bytes before being pre-empted by this
+        // at-or-past-EOF seek, remember it (see hasDeferredRealPosition's doc comment above): the impending 416
+        // this seek is about to trigger (responseReceived's 416-at-EOF special case, below) must not be treated as
+        // a graceful stream end in that case - the file legitimately still has content queued behind it.
+        if (members->requestedPosition && members->requestedPosition < members->size && members->readPosition == members->requestedPosition)
+            members->hasDeferredRealPosition = true;
+    }
 
     members->requestedPosition = members->readPosition = segment->start;
     members->stopPosition = segment->stop;
@@ -1082,6 +1098,23 @@ void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, con
     // an error: an MP4 demuxer that has read the last box asks for the one that would follow it, at exactly the size of the file (a file with a small
     // trailing 'free' box after a 5 GB 'mdat' did that) and the whole playback failed with "Received 416 HTTP error code".
     if (response.httpStatusCode() == httpStatus416RangeNotSatisfiable && members->requestedPosition && members->size && members->requestedPosition >= *members->size) {
+        GST_DEBUG_OBJECT(src.get(), "R%u: 416 for a range that starts at the end of the file (%" G_GUINT64_FORMAT " >= %" G_GUINT64_FORMAT "): end of stream",
+            m_requestNumber, members->requestedPosition, *members->size);
+        members->doesHaveEOS = true;
+        members->responseCondition.notifyOne();
+        completionHandler(ShouldContinuePolicyCheck::No);
+        return;
+    }
+
+    // A range that starts at the end of the file (or behind it) cannot be satisfied, and a server says so with 416. That is the end of the stream, not
+    // an error: an MP4 demuxer that has read the last box asks for the one that would follow it, at exactly the size of the file (a file with a small
+    // trailing 'free' box after a 5 GB 'mdat' did that) and the whole playback failed with "Received 416 HTTP error code". BUT: only when this really
+    // is the end - if hasDeferredRealPosition is set (2026-09-23: seen with >=4GiB ZDF films), this 416 is for a spurious "confirm the exact end" seek
+    // that pre-empted a real, unserved, strictly-below-EOF request; treating it as a graceful EOS here would end the whole stream having delivered
+    // nothing. Falling through to the generic >=400 handling below at least surfaces a normal, visible playback error (which players commonly retry)
+    // instead of hanging forever with no error and no picture.
+    if (response.httpStatusCode() == httpStatus416RangeNotSatisfiable && members->requestedPosition && members->size && members->requestedPosition >= *members->size
+        && !members->hasDeferredRealPosition) {
         GST_DEBUG_OBJECT(src.get(), "R%u: 416 for a range that starts at the end of the file (%" G_GUINT64_FORMAT " >= %" G_GUINT64_FORMAT "): end of stream",
             m_requestNumber, members->requestedPosition, *members->size);
         members->doesHaveEOS = true;
