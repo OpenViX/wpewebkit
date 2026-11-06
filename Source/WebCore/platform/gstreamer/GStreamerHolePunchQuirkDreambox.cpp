@@ -7,12 +7,84 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <wtf/Lock.h>
+#include <wtf/Locker.h>
 
 namespace WebCore {
 
+static Lock decoderLeaseLock;
+static int decoderLeaseFd WTF_GUARDED_BY_LOCK(decoderLeaseLock) = -1;
+static unsigned decoderLeaseCount WTF_GUARDED_BY_LOCK(decoderLeaseLock) = 0;
+
+bool acquireDreamboxDecoder()
+{
+    const char* path = getenv("WPE_DREAM_HANDOVER");
+    if (!path || !*path)
+        return true; // nothing to negotiate
+
+    Locker locker { decoderLeaseLock };
+    if (decoderLeaseFd >= 0) {
+        decoderLeaseCount++;
+        return true;
+    }
+
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0)
+        return false;
+    struct sockaddr_un address = { };
+    address.sun_family = AF_UNIX;
+    strncpy(address.sun_path, path, sizeof(address.sun_path) - 1);
+    char request[48];
+    int requestLength = snprintf(request, sizeof(request), "acquire %d\n", static_cast<int>(getpid()));
+    if (connect(fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0 || write(fd, request, requestLength) != requestLength) {
+        close(fd);
+        return false;
+    }
+    // The embedder has to get enigma2 to stop the live service first: give it time, but not forever.
+    struct pollfd pfd = { fd, POLLIN, 0 };
+    char reply[8] = { };
+    if (poll(&pfd, 1, 10000) <= 0 || read(fd, reply, sizeof(reply) - 1) <= 0 || strncmp(reply, "ok", 2)) {
+        GST_WARNING("Dreambox decoder was not granted by the embedder");
+        close(fd);
+        return false;
+    }
+    decoderLeaseFd = fd;
+    decoderLeaseCount = 1;
+    return true;
+}
+
+static void releaseDreamboxDecoder()
+{
+    Locker locker { decoderLeaseLock };
+    if (!decoderLeaseCount || --decoderLeaseCount)
+        return;
+    close(decoderLeaseFd); // the embedder sees the end of the connection and gives the live service back
+    decoderLeaseFd = -1;
+}
+
+GstElement* leaseDreamboxDecoder(GstElement* sink)
+{
+    if (!sink)
+        return nullptr;
+    if (getenv("WPE_DREAM_HANDOVER"))
+        g_object_weak_ref(G_OBJECT(sink), [](gpointer, GObject*) { releaseDreamboxDecoder(); }, nullptr);
+    return sink;
+}
+
 GstElement* GStreamerHolePunchQuirkDreambox::createHolePunchVideoSink(bool, const MediaPlayer*)
 {
-    return makeGStreamerElement("dvbvideosink"_s, "DreamboxVideoSink"_s);
+    if (!acquireDreamboxDecoder())
+        return nullptr;
+    GstElement* sink = makeGStreamerElement("dvbvideosink"_s, "DreamboxVideoSink"_s);
+    if (!sink) {
+        releaseDreamboxDecoder();
+        return nullptr;
+    }
+    return leaseDreamboxDecoder(sink);
 }
 
 static void writeVideoProc(const char* name, int value)

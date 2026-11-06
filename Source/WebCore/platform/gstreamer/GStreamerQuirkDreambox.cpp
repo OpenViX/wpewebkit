@@ -4,6 +4,7 @@
 #if USE(GSTREAMER)
 
 #include "GStreamerCommon.h"
+#include "GStreamerHolePunchQuirkDreambox.h"
 
 namespace WebCore {
 
@@ -16,7 +17,13 @@ bool GStreamerQuirkDreambox::isPlatformSupported() const
 
 GstElement* GStreamerQuirkDreambox::createAudioSink()
 {
-    return makeGStreamerElement("dvbaudiosink"_s);
+    // denied (or missing) decoder: nullptr lets playbin pick its own sink, i.e. software audio
+    if (!acquireDreamboxDecoder())
+        return nullptr;
+    GstElement* sink = makeGStreamerElement("dvbaudiosink"_s);
+    if (!sink)
+        return nullptr;
+    return leaseDreamboxDecoder(sink);
 }
 
 // The hardware decoders cannot drop the frames that lead from a keyframe to an accurate seek target the way a software

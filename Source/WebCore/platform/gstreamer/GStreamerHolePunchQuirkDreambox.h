@@ -17,6 +17,16 @@
 
 namespace WebCore {
 
+// The video and audio decoder are shared with the live service that enigma2 plays, which must not be disturbed until media
+// really needs them. If the embedder set WPE_DREAM_HANDOVER (the path of a UNIX socket) the web process asks it for the
+// decoder before it creates a dvb sink ("acquire\n", answered by "ok\n" once the live service has been stopped) and keeps
+// the connection open as a lease that ends when the last dvb sink is destroyed, whereupon the embedder gives the live service
+// back. Without the variable nothing is negotiated (the embedder has taken care of the decoder). Returns false when the
+// decoder was denied; the caller then falls back to the software sinks.
+bool acquireDreamboxDecoder();
+// Ties the lease to the sink: it is given up when the sink is destroyed.
+GstElement* leaseDreamboxDecoder(GstElement* sink);
+
 class GStreamerHolePunchQuirkDreambox final : public GStreamerHolePunchQuirk {
 public:
     const ASCIILiteral identifier() const final { return "DreamboxHolePunch"_s; }
