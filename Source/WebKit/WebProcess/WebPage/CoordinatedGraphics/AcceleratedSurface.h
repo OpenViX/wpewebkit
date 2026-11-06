@@ -316,11 +316,19 @@ private:
         RenderTargetSHMImage(AcceleratedSurface&, const WebCore::IntSize&, Ref<WebCore::ShareableBitmap>&&, WebCore::ShareableBitmapHandle&&);
         ~RenderTargetSHMImage();
 
+#if ENABLE(DAMAGE_TRACKING)
+        // What changed since this buffer was last filled; the read-back only has to fetch that.
+        void setReadbackDamage(std::optional<WebCore::Damage>&& damage) { m_readbackDamage = WTF::move(damage); }
+#endif
+
     private:
         bool supportsExplicitSync() const override { return false; }
         void didRenderFrame() override;
 
         const Ref<WebCore::ShareableBitmap> m_bitmap;
+#if ENABLE(DAMAGE_TRACKING)
+        std::optional<WebCore::Damage> m_readbackDamage;
+#endif
     };
 
     class RenderTargetTexture final : public RenderTargetShareableBuffer {
@@ -459,7 +467,15 @@ private:
         }
 
     private:
-        bool needsFineGrainedDamage() const { return m_platformWalksDamageRects || m_damageUsedForCompositing; }
+        bool needsFineGrainedDamage() const
+        {
+#if PLATFORM(GTK) || ENABLE(WPE_PLATFORM)
+            // The shared-memory read-back fetches each damaged rect separately, so keep the rects exact.
+            if (m_swapChain.type() == SwapChain::Type::SharedMemory)
+                return true;
+#endif
+            return m_platformWalksDamageRects || m_damageUsedForCompositing;
+        }
 
         SwapChain& m_swapChain;
         const bool m_platformWalksDamageRects;
