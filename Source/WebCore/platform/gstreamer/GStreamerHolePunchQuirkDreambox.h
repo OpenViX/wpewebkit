@@ -6,6 +6,8 @@
  * The page does not know where it sits on the screen, so the embedder tells it:
  *   WPE_DREAM_VIDEO_ORIGIN=x,y     screen position of the web view's top-left corner (default 0,0)
  *   WPE_DREAM_VIDEO_SCREEN=WxH     size of the screen/OSD the view is placed on (default 1920x1080)
+ *   WPE_DREAM_VIDEO_SCALE=F        the view is shown F times larger than its size (default 1: a 1280x720 page on a
+ *                                  1920x1080 screen is 1.5)
  * Enable with WEBKIT_GST_HOLE_PUNCH_QUIRK=dreambox (plus WEBKIT_GST_QUIRKS=dreambox for the audio sink).
  */
 
