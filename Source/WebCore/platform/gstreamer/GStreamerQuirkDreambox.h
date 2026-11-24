@@ -18,6 +18,7 @@ public:
     bool isPlatformSupported() const final;
 
     GstElement* createAudioSink() final;
+    void configureElement(GstElement*, const OptionSet<ElementRuntimeCharacteristics>&) final;
     bool seekCompletesWithoutAsyncDone() const final { return true; }
     GstSeekFlags adjustSeekFlags(GstSeekFlags) const final;
     std::optional<GstClockTime> decoderPositionFromSinks(GstElement*, GstElement*, GstClockTime maxPosition) const final;
