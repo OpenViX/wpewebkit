@@ -26,27 +26,6 @@ GstElement* GStreamerQuirkDreambox::createAudioSink()
     return leaseDreamboxDecoder(sink);
 }
 
-// playbin3 (always used for MSE) builds its stream chain with uridecodebin3/decodebin3, which keeps decoding until the stream is raw:
-// avdec_h264/avdec_aac get plugged and their raw output is refused by dvbvideosink/dvbaudiosink (not-negotiated, "Failed to push buffer").
-// The native-video/native-audio play flags do not change that for playbin3, so tell the decodebin to stop at the compressed (parsed)
-// formats the dvb sinks take, as the legacy playbin does.
-void GStreamerQuirkDreambox::configureElement(GstElement* element, const OptionSet<ElementRuntimeCharacteristics>&)
-{
-    auto name = GMallocString::unsafeAdoptFromUTF8(gst_element_get_name(element));
-    if (!startsWith(name.span(), "uridecodebin3"_s) && !startsWith(name.span(), "decodebin3"_s))
-        return;
-    if (!g_object_class_find_property(G_OBJECT_GET_CLASS(element), "caps"))
-        return;
-
-    GstCaps* current = nullptr;
-    g_object_get(element, "caps", &current, nullptr);
-    GRefPtr<GstCaps> caps = adoptGRef(current ? gst_caps_make_writable(current) : gst_caps_new_empty());
-    GRefPtr<GstCaps> compressed = adoptGRef(gst_caps_from_string("video/x-h264, parsed=(boolean)true; video/x-h265, parsed=(boolean)true; video/mpeg, mpegversion=(int){ 1, 2, 4 }, systemstream=(boolean)false; video/x-vp8; video/x-vp9; audio/mpeg, mpegversion=(int){ 2, 4 }, framed=(boolean)true; audio/x-ac3; audio/x-eac3; audio/x-dts"));
-    gst_caps_append(caps.get(), gst_caps_copy(compressed.get()));
-    g_object_set(element, "caps", caps.get(), nullptr);
-    GST_INFO("Dreambox: %s stops decoding at compressed formats, caps %" GST_PTR_FORMAT, GST_ELEMENT_NAME(element), caps.get());
-}
-
 // The hardware decoders cannot drop the frames that lead from a keyframe to an accurate seek target the way a software
 // decoder does: after a FLUSH | ACCURATE seek the output stalled. enigma2's own player (eServiceMP3) seeks to the nearest
 // keyframe with FLUSH | KEY_UNIT, which the sinks handle: the decoder restarts at the keyframe and pause/resume work.
